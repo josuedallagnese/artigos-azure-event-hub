@@ -3,18 +3,18 @@
 # Exemplo sobre Azure Event Hubs
 
 ## Pré-requisitos
-- Assinatura no portal Azure para criação de um Event Hubs Namespace e uma Storage Account:
+Assinatura no portal Azure para criação de um Event Hubs Namespace e uma Storage Account:
 
-1. Crie uma **Storage Account** com o nome e o local que preferir, com um container privado chamado "**event-hub**".
-2. Crie um **Event Hubs Namespace** com o nome e o local que preferir, definindo o Pricing tier para **Standard** e o **Throughput Units** para 2
-2.1. Dentro do namespace criado, adicione 3 hubs chamados respectivamente de "**case1**" com 1 partição, "**case2**" com 3 partições e "**case3**" com 4 partições.
-
-- Crie um **Azure Database for PostgreSQL Server** na sua conta Azure ou então suba na sua máquina local uma instância como preferir (docker é uma boa opção).
+1) Crie uma **Storage Account** com o nome e o local que preferir, com um container privado chamado "**event-hub**".
+2) Crie um **Event Hubs Namespace** com o nome e o local que preferir, definindo o Pricing tier para **Standard** e o **Throughput Units** para 2.
+3) Dentro do namespace criado, adicione 3 hubs chamados respectivamente de "**case1**" com 1 partição, "**case2**" com 3 partições e "**case3**" com 4 partições.
+4) Crie um **Azure Database for PostgreSQL Server** na sua conta Azure ou então suba na sua máquina local uma instância como preferir (docker é uma boa opção).
 
 ## Configuração
 
-1. Existem dois projetos nesta solução chamados **EventHub.Consumer** e **EventHub.Producer**.
-   Dentro de cada projeto configure o arquivo **appsettings.Development.json** conforme a estrutura a seguir:
+Existem dois projetos nesta solução chamados **EventHub.Consumer** e **EventHub.Producer**.
+
+Dentro de cada projeto configure o arquivo **appsettings.Development.json** conforme a estrutura a seguir:
 ```json
 {
     "NpgsqlConnectionString": "<Conexão PostgreSQL>",
@@ -69,8 +69,11 @@ What job do you want?
 
 Cada caso explora um hub com uma estrutura diferente, onde mensagens são produzidas pelo projeto de **Producer** e
 consumidas de diferentes formas pelo projeto de **Consumer**. 
+
 Sempre execute o projeto de Producer e o projeto de Consumer com a opção do caso desejado: 1, 2 ou 3.
 
 Ao executar o "caso3" de **Consumer**, opção 5 do console, você poderá escolher qual partição você irá querer consumir.
+
 Sugiro subir 4 instâncias do **Consumer** (Control + F5 pelo visual studio) e opção 5 do console informando respectivamente as partições 0, 1, 2 e 3 como você criou anteriormente em sua conta Azure.
+
 Este exemplo irá criar uma base de dados chamada "EventHub" com uma tabela "Case3" na instância PostgreSQL informada contendo as mensagens recebidas de cada partição.
