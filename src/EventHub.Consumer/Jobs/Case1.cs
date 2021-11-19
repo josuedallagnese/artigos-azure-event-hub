@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -44,7 +43,7 @@ namespace EventHub.Consumer.Jobs
                     int batchSize = 10;
                     TimeSpan waitTime = TimeSpan.FromSeconds(1);
 
-                    IEnumerable<EventData> eventBatch = await receiver.ReceiveBatchAsync(
+                    var eventBatch = await receiver.ReceiveBatchAsync(
                         batchSize,
                         waitTime,
                         cancellationSource.Token);
@@ -56,7 +55,7 @@ namespace EventHub.Consumer.Jobs
 
                         foreach (EventData eventData in eventBatch)
                         {
-                            LogEventData(eventData, "0");
+                            Application.Log(eventData, "0");
                         }
 
                         Console.WriteLine("Chunk end");
@@ -87,14 +86,6 @@ namespace EventHub.Consumer.Jobs
             }
 
             Console.WriteLine("Finished ... ");
-        }
-
-        private static void LogEventData(EventData data, string partitionId)
-        {
-            var messageNumber = data.Properties["messageNumber"].ToString();
-            var sequenceNumber = data.SequenceNumber;
-
-            Console.WriteLine($"[MessageNumber: {messageNumber}] - [SequenceNumber: {sequenceNumber}] - [PartitionId: {partitionId}]");
         }
     }
 }

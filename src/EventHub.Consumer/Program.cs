@@ -63,8 +63,6 @@ namespace EventBus.Consumer
 
                 var correlationId = Guid.NewGuid();
 
-                Console.WriteLine($"CorrelationId {correlationId}");
-
                 await jobs[jobIndex].ExecuteAsync(correlationId);
 
                 Console.WriteLine("Press any key to continue...");

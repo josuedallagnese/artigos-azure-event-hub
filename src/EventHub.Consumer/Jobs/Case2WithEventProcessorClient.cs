@@ -2,7 +2,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
-using Azure.Messaging.EventHubs.Consumer;
 using Azure.Messaging.EventHubs.Processor;
 using Azure.Storage.Blobs;
 using EventHub.Core;
@@ -37,74 +36,16 @@ namespace EventHub.Consumer.Jobs
                 _configuration.ConnectionString,
                 hub.HubName);
 
-            Task InitializeEventHandler(PartitionInitializingEventArgs args)
-            {
-                try
-                {
-                    if (args.CancellationToken.IsCancellationRequested)
-                        return Task.CompletedTask;
-
-                    // If no checkpoint was found, start processing
-                    // events enqueued now or in the future.
-
-                    args.DefaultStartingPosition = EventPosition.Earliest;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
-                }
-
-                return Task.CompletedTask;
-            }
-
-            Task CloseEventHandler(PartitionClosingEventArgs args)
-            {
-                try
-                {
-                    if (args.CancellationToken.IsCancellationRequested)
-                        return Task.CompletedTask;
-
-                    string description = args.Reason switch
-                    {
-                        ProcessingStoppedReason.OwnershipLost =>
-                            "Another processor claimed ownership",
-
-                        ProcessingStoppedReason.Shutdown =>
-                            "The processor is shutting down",
-
-                        _ => args.Reason.ToString()
-                    };
-
-                    Console.WriteLine($"Closing partition: {args.PartitionId}");
-                    Console.WriteLine($"Reason: {description}");
-                }
-                catch
-                {
-                    // Take action to handle the exception.
-                    // It is important that all exceptions are
-                    // handled and none are permitted to bubble up.
-                }
-
-                return Task.CompletedTask;
-            }
-
-            async Task ProcessEventHandler(ProcessEventArgs args)
+            static Task ProcessEventAsync(ProcessEventArgs args)
             {
                 if (!args.HasEvent)
-                    return;
+                {
+                    Application.Heartbeat(args);
 
-                LogEventData(args);
+                    return Task.CompletedTask;
+                }
 
-                await args.UpdateCheckpointAsync();
-
-                Console.WriteLine($"Update checkpoint - [PartitionId: {args.Partition.PartitionId}] - [SequenceNumber: {args.Data.SequenceNumber}]");
-            }
-
-            Task ProcessErrorHandler(ProcessErrorEventArgs args)
-            {
-                Console.WriteLine("Error in the EventProcessorClient");
-                Console.WriteLine($"Operation: {args.Operation}");
-                Console.WriteLine($"Exception: {args.Exception}");
+                Application.Log(args);
 
                 return Task.CompletedTask;
             }
@@ -113,10 +54,10 @@ namespace EventHub.Consumer.Jobs
             {
                 using var cancellationSource = new CancellationTokenSource();
 
-                processor.PartitionInitializingAsync += InitializeEventHandler;
-                processor.PartitionClosingAsync += CloseEventHandler;
-                processor.ProcessEventAsync += ProcessEventHandler;
-                processor.ProcessErrorAsync += ProcessErrorHandler;
+                processor.PartitionInitializingAsync += Application.EventProcessorClient_InitializeEventHandler;
+                processor.PartitionClosingAsync += Application.EventProcessorClient_CloseEventHandler;
+                processor.ProcessEventAsync += ProcessEventAsync;
+                processor.ProcessErrorAsync += Application.EventProcessorClient_ProcessErrorHandler;
 
                 try
                 {
@@ -136,7 +77,7 @@ namespace EventHub.Consumer.Jobs
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    Application.HandleException(ex);
                 }
                 finally
                 {
@@ -166,20 +107,11 @@ namespace EventHub.Consumer.Jobs
                 // is especially important when using lambda expressions or handlers
                 // in any form that may contain closure scopes or hold other references.
 
-                processor.ProcessEventAsync -= ProcessEventHandler;
-                processor.ProcessErrorAsync -= ProcessErrorHandler;
+                processor.ProcessEventAsync -= ProcessEventAsync;
+                processor.ProcessErrorAsync -= Application.EventProcessorClient_ProcessErrorHandler;
             }
 
             Console.WriteLine("Finished ... ");
-        }
-
-        private static void LogEventData(ProcessEventArgs args)
-        {
-            var id = args.Data.Properties["id"].ToString();
-            var number = args.Data.Properties["number"].ToString();
-            var sequenceNumber = args.Data.SequenceNumber;
-
-            Console.WriteLine($"[id: {id}] - [Number: {number}] - [SequenceNumber: {sequenceNumber}] - [PartitionId: {args.Partition.PartitionId}]");
         }
     }
 }

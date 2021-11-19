@@ -52,6 +52,7 @@ namespace EventHub.Producer.Jobs
                 var eventBody = new BinaryData(message);
                 var eventData = new EventData(eventBody);
 
+                eventData.Properties.Add("producerId", id);
                 eventData.Properties.Add("messageNumber", message.Id);
 
                 if (!eventBatch.TryAdd(eventData))
@@ -59,6 +60,8 @@ namespace EventHub.Producer.Jobs
                     throw new Exception($"The event could not be added. See MaximumSizeInBytes in CreateBatchOptions.");
                 }
             }
+
+            Console.WriteLine($"Sending {eventBatch.Count} messages ... ");
 
             await producer.SendAsync(eventBatch);
 

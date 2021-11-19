@@ -25,7 +25,8 @@ namespace EventHub.Core.Configuration
         public string HubName { get; set; }
         public string ConsumerGroup { get; set; }
         public int NumberOfMessages { get; set; }
-        public int NumberOfMessagesByChunk { get; set; }
+        public int Chunks { get; set; }
+        public int CheckpointAt { get; set; }
         public string BlobContainerName { get; set; }
         public string BlobStorageConnectionString { get; set; }
     }

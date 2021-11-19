@@ -45,10 +45,10 @@ namespace EventHub.Producer.Jobs
 
             var messageNumber = 1;
             var pageIndex = 1;
-            var pages = messages.Batch(hub.NumberOfMessagesByChunk);
-            var totalPages = pages.Count() / hub.NumberOfMessagesByChunk;
+            var pages = messages.Batch(hub.Chunks);
+            var totalPages = pages.Count() / hub.Chunks;
 
-            Console.WriteLine($"Starting pages with size of {hub.NumberOfMessagesByChunk}.");
+            Console.WriteLine($"Starting pages with size of {hub.Chunks}.");
 
             foreach (var page in pages)
             {
@@ -59,7 +59,8 @@ namespace EventHub.Producer.Jobs
                     var eventBody = new BinaryData(message);
                     var eventData = new EventData(eventBody);
 
-                    eventData.Properties.Add("messageNumber", messageNumber);
+                    eventData.Properties.Add("producerId", id);
+                    eventData.Properties.Add("messageNumber", message.Id);
 
                     if (!eventBatch.TryAdd(eventData))
                     {

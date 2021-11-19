@@ -1,155 +1,168 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Azure.Messaging.EventHubs.Consumer;
-using Azure.Messaging.EventHubs.Primitives;
+using Azure.Messaging.EventHubs;
+using Azure.Messaging.EventHubs.Processor;
+using Azure.Storage.Blobs;
 using EventHub.Consumer.Repositories;
 using EventHub.Core;
 using EventHub.Core.Configuration;
-using Microsoft.EntityFrameworkCore;
 
 namespace EventHub.Consumer.Jobs
 {
     class Case3 : IConsumer
     {
         private readonly EventHubConfiguration _configuration;
+        private readonly ConcurrentDictionary<string, List<EventData>> _batches;
+        private bool _checkpointNeeded = false;
+        private int _checkpointAt = 0;
 
-        public string Name => "Case 3: Read for partition in bacth size using PartitionReceiver and save in local database...";
+        public string Name => "Case 3: Read all partition with Event Processor Client and save in local database...";
 
         public Case3(EventHubConfiguration configuration)
         {
             _configuration = configuration;
+
+            _batches = new ConcurrentDictionary<string, List<EventData>>();
         }
 
         public async Task ExecuteAsync(Guid id)
         {
             Console.WriteLine("Starting ...");
 
-            using (var context = SampleContext.Create(_configuration))
-            {
-                Console.WriteLine("Apply migrations ...");
-
-                await context.Database.MigrateAsync();
-
-                Console.WriteLine("Database updated ...");
-            }
+            //await SampleContext.MigrateAsync(_configuration);
 
             var hub = _configuration.GetHub("case3");
 
-            Console.WriteLine("Which partition would you like?");
+            var storageClient = new BlobContainerClient(
+                hub.BlobStorageConnectionString,
+                hub.BlobContainerName);
 
-            if (!int.TryParse(Console.ReadLine(), out var partition) ||
-                partition < 0 ||
-                partition > 3)
-            {
-                Console.WriteLine("Invalid partition ...");
-                return;
-            }
-
-            var receiver = new PartitionReceiver(
+            var processor = new EventProcessorClient(
+                storageClient,
                 hub.ConsumerGroup,
-                partition.ToString(),
-                EventPosition.Earliest,
                 _configuration.ConnectionString,
                 hub.HubName);
 
+            _checkpointAt = hub.CheckpointAt;
+
+            Console.WriteLine($"The Checkpoint process will be done At {_checkpointAt} messages. You can put another value or press any key to continue.");
+
+            if (int.TryParse(Console.ReadLine(), out int anotherValue))
+            {
+                _checkpointAt = anotherValue;
+
+                Console.WriteLine($"Checkpoint changed to {_checkpointAt} messages.");
+            }
+
             try
             {
-                await ReadPartitionAsync(_configuration, receiver, partition);
+                using var cancellationSource = new CancellationTokenSource();
+
+                processor.PartitionInitializingAsync += Application.EventProcessorClient_InitializeEventHandler;
+                processor.PartitionClosingAsync += Application.EventProcessorClient_CloseEventHandler;
+                processor.ProcessEventAsync += ProcessEventAsync;
+                processor.ProcessErrorAsync += Application.EventProcessorClient_ProcessErrorHandler;
+
+                try
+                {
+                    await processor.StartProcessingAsync(cancellationSource.Token);
+
+                    Console.WriteLine("Reading hub messages for earliest position ... Press any key to cancel");
+                    Console.ReadKey();
+
+                    Console.WriteLine("Cancelling ... ");
+
+                    cancellationSource.Cancel();
+                }
+                catch (TaskCanceledException)
+                {
+                    // This is expected if the cancellation token is
+                    // signaled.
+                }
+                catch (Exception ex)
+                {
+                    Application.HandleException(ex);
+                }
+                finally
+                {
+                    // This may take up to the length of time defined
+                    // as part of the configured TryTimeout of the processor;
+                    // by default, this is 60 seconds.
+
+                    Console.WriteLine("Stopping ... ");
+
+                    await processor.StopProcessingAsync();
+                }
             }
-            catch (TaskCanceledException)
+            catch
             {
-                // This is expected if the cancellation token is
-                // signaled.
+                // The processor will automatically attempt to recover from any
+                // failures, either transient or fatal, and continue processing.
+                // Errors in the processor's operation will be surfaced through
+                // its error handler.
+                //
+                // If this block is invoked, then something external to the
+                // processor was the source of the exception.
             }
             finally
             {
-                Console.WriteLine("Closing receiver ... ");
+                // It is encouraged that you unregister your handlers when you have
+                // finished using the Event Processor to ensure proper cleanup.  This
+                // is especially important when using lambda expressions or handlers
+                // in any form that may contain closure scopes or hold other references.
 
-                await receiver.CloseAsync();
+                processor.ProcessEventAsync -= ProcessEventAsync;
+                processor.ProcessErrorAsync -= Application.EventProcessorClient_ProcessErrorHandler;
             }
 
             Console.WriteLine("Finished ... ");
         }
 
-        private static async Task ReadPartitionAsync(EventHubConfiguration configuration, PartitionReceiver receiver, int partition)
+        private async Task ProcessEventAsync(ProcessEventArgs args)
         {
-            var cancellationSource = new CancellationTokenSource();
+            Application.Log(args);
 
-            int batchSize = 2500;
-
-            Console.WriteLine($"Reading partition {partition} in bacth size of {batchSize} itens. Starting by earliest position. Press 'Escape' cancel ...");
-
-            try
+            if (!args.HasEvent)
             {
-                _ = Task.Factory.StartNew(() =>
-                {
-                    while (Console.ReadKey().Key != ConsoleKey.Escape)
-                    {
-                        continue;
-                    }
+                Application.Heartbeat(args);
 
-                    Console.WriteLine("Cancelling ... ");
-
-                    cancellationSource.Cancel();
-                });
-
-                while (!cancellationSource.IsCancellationRequested)
-                {
-                    var waitTime = TimeSpan.FromSeconds(5);
-
-                    var eventBatch = await receiver.ReceiveBatchAsync(
-                        batchSize,
-                        waitTime,
-                        cancellationSource.Token);
-
-                    if (!eventBatch.Any())
-                    {
-                        Console.WriteLine("No messages found. Press 'Escape' cancel ...");
-                        continue;
-                    }
-
-                    var modulos = eventBatch
-                        .Select(s => new { s.SequenceNumber, Message = s.EventBody.ToObjectFromJson<Case3Message>() });
-
-                    var modulosIds = modulos.Select(s => s.Message.Id).ToArray();
-
-                    using (var context = SampleContext.Create(configuration))
-                    {
-
-                        var exists = await context.Case3
-                            .Where(w => modulosIds.Contains(w.Id))
-                            .Select(s => s.Id)
-                            .ToArrayAsync();
-
-                        if (exists.Length > 0)
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-
-                        Console.WriteLine($"Already exists: {exists.Length}");
-                        Console.ForegroundColor = ConsoleColor.White;
-
-                        var canBeInsert = modulos
-                            .Where(w => !exists.Contains(w.Message.Id))
-                            .ToArray();
-
-                        if (canBeInsert.Any())
-                        {
-                            context.Case3.AddRange(canBeInsert.Select(s => s.Message).ToArray());
-
-                            await context.SaveChangesAsync();
-
-                            Console.WriteLine($"Inserted: {canBeInsert.Length}");
-                            Console.WriteLine($"Min SequenceNumber: {canBeInsert.Min(m => m.SequenceNumber)}");
-                            Console.WriteLine($"Max SequenceNumber: {canBeInsert.Max(m => m.SequenceNumber)}");
-                        }
-                    }
-                }
+                return;
             }
-            catch (TaskCanceledException)
+
+            var partition = args.Partition.PartitionId;
+
+            var partitionBatch = _batches.GetOrAdd(
+                partition,
+                new List<EventData>());
+
+            partitionBatch.Add(args.Data);
+
+            if (partitionBatch.Count >= _checkpointAt)
             {
-                // This is expected if the cancellation token is
-                // signaled.
+                var messages = partitionBatch.Select(s => s.EventBody.ToObjectFromJson<Case3Message>());
+
+                await SampleContext.StoreMessagesAsync(messages, _configuration);
+
+                _checkpointNeeded = true;
+
+                partitionBatch.Clear();
+            }
+
+            if (_checkpointNeeded)
+            {
+                await args.UpdateCheckpointAsync();
+
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine();
+                Console.WriteLine("Checkpoint done!");
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.White;
+
+                _checkpointNeeded = false;
             }
         }
     }

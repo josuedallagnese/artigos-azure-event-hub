@@ -82,7 +82,7 @@ namespace EventHub.Consumer.Jobs
                         continue;
                     }
 
-                    LogEventData(partitionEvent);
+                    Application.Log(partitionEvent);
                 }
             }
             catch (TaskCanceledException)
@@ -92,14 +92,6 @@ namespace EventHub.Consumer.Jobs
             }
 
             Console.WriteLine();
-        }
-
-        private static void LogEventData(PartitionEvent @event)
-        {
-            var messageNumber = @event.Data.Properties["messageNumber"].ToString();
-            var sequenceNumber = @event.Data.SequenceNumber;
-
-            Console.WriteLine($"[MessageNumber: {messageNumber}] - [SequenceNumber: {sequenceNumber}] - [PartitionId: {@event.Partition.PartitionId}]");
         }
     }
 }

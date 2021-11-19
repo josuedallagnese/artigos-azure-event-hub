@@ -11,8 +11,8 @@ namespace EventHub.Consumer.Jobs
     {
         private readonly EventHubConfiguration _configuration;
 
-        public string Name => "Case 2: consuming a single partition EventHubConsumerClient";
-
+        public string Name => "Case 2: consuming a single partition ('0','1','2') EventHubConsumerClient";
+        
         public Case2ConsumingSinglePartition(EventHubConfiguration configuration)
         {
             _configuration = configuration;
@@ -84,7 +84,7 @@ namespace EventHub.Consumer.Jobs
                         continue;
                     }
 
-                    LogEventData(partitionEvent);
+                    Application.Log(partitionEvent);
                 }
             }
             catch (TaskCanceledException)
@@ -94,14 +94,6 @@ namespace EventHub.Consumer.Jobs
             }
 
             Console.WriteLine();
-        }
-
-        private static void LogEventData(PartitionEvent @event)
-        {
-            var messageNumber = @event.Data.Properties["messageNumber"].ToString();
-            var sequenceNumber = @event.Data.SequenceNumber;
-
-            Console.WriteLine($"[MessageNumber: {messageNumber}] - [SequenceNumber: {sequenceNumber}] - [PartitionId: {@event.Partition.PartitionId}]");
         }
     }
 }
