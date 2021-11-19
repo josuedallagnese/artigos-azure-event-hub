@@ -33,7 +33,7 @@ namespace EventHub.Consumer.Jobs
         {
             Console.WriteLine("Starting ...");
 
-            //await SampleContext.MigrateAsync(_configuration);
+            await SampleContext.MigrateAsync(_configuration);
 
             var hub = _configuration.GetHub("case3");
 
